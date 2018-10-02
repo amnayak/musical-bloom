@@ -14,10 +14,10 @@ How To Play:
 
 Just as the doc says, copy the pattern that the cubes follow.
 
-W -- Red
-D -- Blue
-S -- Green
-A -- Yellow
+* W -- Red
+* D -- Blue
+* S -- Green
+* A -- Yellow
 
 LRUD works as well
 
