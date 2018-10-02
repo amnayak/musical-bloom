@@ -4,6 +4,7 @@
 #include "Load.hpp"
 #include "MeshBuffer.hpp"
 #include "Scene.hpp"
+#include "Sound.hpp"
 #include "gl_errors.hpp" //helper for dumpping OpenGL error messages
 #include "check_fb.hpp" //helper for checking currently bound OpenGL framebuffer
 #include "read_chunk.hpp" //helper for reading a vector of structures from a file
@@ -13,18 +14,60 @@
 #include "load_save_png.hpp"
 #include "texture_program.hpp"
 #include "depth_program.hpp"
+#include "data_path.hpp" //helper to get paths relative to executable
+
 
 #include <glm/gtc/type_ptr.hpp>
 
+#include <chrono>
+#include <thread>
 #include <iostream>
 #include <fstream>
 #include <map>
 #include <cstddef>
 #include <random>
+#include <algorithm>
+
+//game state variables
+bool user_input = false; //true when listening for user input
+std::vector<uint32_t> user_vector; //stores user input, cleared after every round
+std::vector<uint32_t> generated_vector; //stores generated sequence, initialized with one value
+std::string cube [4] = {"RedCube", "BlueCube", "GreenCube", "YellowCube"};//converts vector value to mesh
+bool is_bloom [4] = {false, false, false, false}; //converts vector value to whether corresponding cube has bloom
+std::random_device r;
+std::seed_seq seed{r(), r(), r(), r(), r(), r(), r(), r()};
+std::mt19937 eng{seed};
+std::uniform_int_distribution<> dist_x(0,3);
+std::shared_ptr< Sound::PlayingSample > loop;
+bool gameOver = false;
+//dist_x(eng); to generate something
+typedef std::chrono::high_resolution_clock Time;
+typedef std::chrono::duration<float> fsec;
+
+
+//LOAD SOUNDS
+Load< Sound::Sample > sample_red(LoadTagDefault, [](){
+	return new Sound::Sample(data_path("sound/RedChime.wav"));
+});
+Load< Sound::Sample > sample_blue(LoadTagDefault, [](){
+	return new Sound::Sample(data_path("sound/BlueChime.wav"));
+});
+Load< Sound::Sample > sample_green(LoadTagDefault, [](){
+	return new Sound::Sample(data_path("sound/GreenChime.wav"));
+});
+Load< Sound::Sample > sample_yellow(LoadTagDefault, [](){
+	return new Sound::Sample(data_path("sound/YellowChime.wav"));
+});
+Load< Sound::Sample > sample_failure(LoadTagDefault, [](){
+	return new Sound::Sample(data_path("sound/Incorrect.wav"));
+});
+Load< Sound::Sample > sample_success(LoadTagDefault, [](){
+	return new Sound::Sample(data_path("sound/Correct.wav"));
+});
 
 
 Load< MeshBuffer > meshes(LoadTagDefault, [](){
-	return new MeshBuffer(data_path("vignette.pnct"));
+	return new MeshBuffer(data_path("musical.pnct"));
 });
 
 Load< GLuint > meshes_for_texture_program(LoadTagDefault, [](){
@@ -159,14 +202,12 @@ Load< Scene > scene(LoadTagDefault, [](){
 
 
 	//load transform hierarchy:
-	ret->load(data_path("vignette.scene"), [&](Scene &s, Scene::Transform *t, std::string const &m){
+	ret->load(data_path("musical.scene"), [&](Scene &s, Scene::Transform *t, std::string const &m){
 		Scene::Object *obj = s.new_object(t);
 
 		obj->programs[Scene::Object::ProgramTypeDefault] = texture_program_info;
 		if (t->name == "Platform") {
 			obj->programs[Scene::Object::ProgramTypeDefault].textures[0] = *wood_tex;
-		} else if (t->name == "Pedestal") {
-			obj->programs[Scene::Object::ProgramTypeDefault].textures[0] = *marble_tex;
 		} else {
 			obj->programs[Scene::Object::ProgramTypeDefault].textures[0] = *white_tex;
 		}
@@ -202,6 +243,7 @@ Load< Scene > scene(LoadTagDefault, [](){
 			if (camera) throw std::runtime_error("Multiple 'Camera' objects in scene.");
 			camera = c;
 		}
+		  //camera->transform->x = ;
 	}
 	if (!camera) throw std::runtime_error("No 'Camera' camera in scene.");
 
@@ -224,30 +266,145 @@ GameMode::GameMode() {
 GameMode::~GameMode() {
 }
 
-bool GameMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size) {
-	//ignore any keys that are the result of automatic key repeat:
-	if (evt.type == SDL_KEYDOWN && evt.key.repeat) {
-		return false;
+void set_bloom (uint32_t selectedCube) {
+	//set all to false
+	for (uint32_t i = 0; i < 4; i++) {
+		is_bloom[i] = false;
 	}
+	//set selectedCube to true
+	is_bloom[selectedCube] = true;
+}
 
-	if (evt.type == SDL_MOUSEMOTION) {
-		if (evt.motion.state & SDL_BUTTON(SDL_BUTTON_LEFT)) {
-			camera_spin += 5.0f * evt.motion.xrel / float(window_size.x);
-			return true;
-		}
-		if (evt.motion.state & SDL_BUTTON(SDL_BUTTON_RIGHT)) {
-			spot_spin += 5.0f * evt.motion.xrel / float(window_size.x);
-			return true;
-		}
+void rest(uint32_t delay) {
+	std::cout << "began sleep"<< std::endl;
+	std::this_thread::sleep_for(std::chrono::milliseconds(delay));
+	std::cout << "end sleep"<< std::endl;
+}
 
+void play_chime(std::string chimeType) {
+	if (chimeType == "RedCube") {
+		loop = sample_red->play(glm::vec3(0.0f, 0.0f, 0.0f), 1.0f, Sound::Once);
+		rest(3000);
+	} else if (chimeType == "BlueCube") {
+		loop = sample_blue->play(glm::vec3(0.0f, 0.0f, 0.0f), 1.0f, Sound::Once);
+		rest(3000);
+	} else if (chimeType == "GreenCube") {
+		loop = sample_green->play(glm::vec3(0.0f, 0.0f, 0.0f), 1.0f, Sound::Once);
+		rest(3000);
+	} else if (chimeType == "YellowCube") {
+		loop = sample_yellow->play(glm::vec3(0.0f, 0.0f, 0.0f), 1.0f, Sound::Once);
+		rest(3000);
+	} else if (chimeType == "FAILURE") {
+		loop = sample_failure->play(glm::vec3(0.0f, 0.0f, 0.0f), 0.2f, Sound::Once);
+		//rest(500);
+	} else if (chimeType == "SUCCESS") {
+		loop = sample_success->play(glm::vec3(0.0f, 0.0f, 0.0f), 0.2f, Sound::Once);
+		//rest(500);
+	} else {
+		std::cout << "invalid chime @ play_chime: " << chimeType << std::endl;
+	}
+}
+
+bool GameMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size) {
+	//TODO: for each input, play the right chime
+	if (user_input == true && user_vector.size() < generated_vector.size()) {
+ 		//keep listening, add to user_input
+			if (evt.type == SDL_KEYDOWN) {
+
+				//TODO FOR DEBUGGING ONLY, PLS REMOVE
+				if (evt.key.keysym.scancode == SDL_SCANCODE_L) {
+						std::cout << "GENERATED VECTOR: " << std::endl;
+						for(int i=0; i<generated_vector.size(); ++i){
+							std::cout << generated_vector[i] << ' ';
+						}
+						std::cout << " " << std::endl;
+
+						std::cout << "USER VECTOR: " << std::endl;
+						for(int i=0; i<user_vector.size(); ++i){
+							std::cout << user_vector[i] << ' ';
+						}
+						std::cout << " " << std::endl;
+
+						return true;
+					}
+
+				//RED
+				if (evt.key.keysym.scancode == SDL_SCANCODE_W || evt.key.keysym.scancode == SDL_SCANCODE_UP) {
+						user_vector.push_back(0);
+						set_bloom(0);
+						play_chime(cube[0]);
+						return true;
+		    //GREEN
+				} else if (evt.key.keysym.scancode == SDL_SCANCODE_S || evt.key.keysym.scancode == SDL_SCANCODE_DOWN) {
+						user_vector.push_back(2);
+						set_bloom(2);
+						play_chime(cube[2]);
+						return true;
+				//YELLOW
+				} else if (evt.key.keysym.scancode == SDL_SCANCODE_A || evt.key.keysym.scancode == SDL_SCANCODE_LEFT) {
+						user_vector.push_back(3);
+						set_bloom(3);
+						play_chime(cube[3]);
+						return true;
+				//BLUE
+				} else if (evt.key.keysym.scancode == SDL_SCANCODE_D || evt.key.keysym.scancode == SDL_SCANCODE_RIGHT) {
+						user_vector.push_back(1);
+						set_bloom(1);
+						play_chime(cube[1]);
+						return true;
+				}
+		}
 	}
 
 	return false;
 }
 
+void play_chimes() {
+	//play each chime in the generated_vector
+	for(uint32_t i : generated_vector) {
+		assert (i >= 0 && i <= 3);
+		play_chime(cube[i]);
+		set_bloom(i);
+	}
+}
 void GameMode::update(float elapsed) {
-	camera_parent_transform->rotation = glm::angleAxis(camera_spin, glm::vec3(0.0f, 0.0f, 1.0f));
-	spot_parent_transform->rotation = glm::angleAxis(spot_spin, glm::vec3(0.0f, 0.0f, 1.0f));
+	//camera_parent_transform->rotation = glm::angleAxis(camera_spin, glm::vec3(0.0f, 0.0f, 1.0f));
+	//spot_parent_transform->rotation = glm::angleAxis(spot_spin, glm::vec3(0.0f, 0.0f, 1.0f));
+
+	//check win/loss conditions
+	if (gameOver) {
+		std::cout << "GAME OVER" << std::endl;
+		std::cout << "SCORE: " << generated_vector.size() - 1 << std::endl;
+		return;
+	}
+
+	// if first n elements of user_vector and generated_vector are equal
+	//where n is user_vector.length, then you haven't lost
+	uint32_t n = user_vector.size();
+	if (std::equal(user_vector.begin(), user_vector.begin() + n, generated_vector.begin())) {
+		//they're equal, keep going
+		gameOver = false;
+	} else {
+		//they're not equal, user made a bad press
+		play_chime("FAILURE");
+		gameOver = true;
+	}
+
+  //core gameplay
+	if (user_input == false) { //play phase
+		play_chime("SUCCESS");
+		user_vector.clear(); //clear for new input
+		generated_vector.push_back(dist_x(eng)); //push random cube
+		play_chimes();
+		user_input = true;
+	} else if (user_input == true) {
+		//handle_event's job to fill user_vector
+		if (user_vector.size() >= generated_vector.size()) {
+			//stop listening to user_input
+			user_input = false;
+		}
+	}
+
 }
 
 //GameMode will render to some offscreen framebuffer(s).
@@ -279,12 +436,12 @@ struct Framebuffers {
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 			glBindTexture(GL_TEXTURE_2D, 0);
-	
+
 			if (depth_rb == 0) glGenRenderbuffers(1, &depth_rb);
 			glBindRenderbuffer(GL_RENDERBUFFER, depth_rb);
 			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, size.x, size.y);
 			glBindRenderbuffer(GL_RENDERBUFFER, 0);
-	
+
 			if (fb == 0) glGenFramebuffers(1, &fb);
 			glBindFramebuffer(GL_FRAMEBUFFER, fb);
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, color_tex, 0);
@@ -317,7 +474,7 @@ struct Framebuffers {
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 			glBindTexture(GL_TEXTURE_2D, 0);
-	
+
 			if (shadow_fb == 0) glGenFramebuffers(1, &shadow_fb);
 			glBindFramebuffer(GL_FRAMEBUFFER, shadow_fb);
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, shadow_color_tex, 0);
