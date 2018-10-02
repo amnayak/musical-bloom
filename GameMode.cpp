@@ -129,17 +129,6 @@ Load< GLuint > blur_program(LoadTagDefault, [](){
 		"vec4 n3 = texture(tex, (gl_FragCoord.xy + vec2(-ofs.x,-ofs.y)) / textureSize(tex, 0));\n"
 		"vec4 n4 = texture(tex, (gl_FragCoord.xy + vec2(ofs.y,-ofs.x)) / textureSize(tex, 0));\n"
 		"blur += 0.1 * (n1+n2+n3+n4);\n"
-			/* do the other three neighbors */
-
-		//do a four-pixel average to blur:
-		/**
-		"	vec4 blur =\n"
-		"		+ 0.25 * texture(tex, (gl_FragCoord.xy + vec2(ofs.x,ofs.y)) / textureSize(tex, 0))\n"
-		"		+ 0.25 * texture(tex, (gl_FragCoord.xy + vec2(-ofs.y,ofs.x)) / textureSize(tex, 0))\n"
-		"		+ 0.25 * texture(tex, (gl_FragCoord.xy + vec2(-ofs.x,-ofs.y)) / textureSize(tex, 0))\n"
-		"		+ 0.25 * texture(tex, (gl_FragCoord.xy + vec2(ofs.y,-ofs.x)) / textureSize(tex, 0))\n"
-		"	;\n"
-		**/
 		"	fragColor = vec4(blur.rgb, 1.0);\n" //blur;\n"
 		"}\n"
 	);
@@ -262,7 +251,6 @@ Load< Scene > scene(LoadTagDefault, [](){
 			if (camera) throw std::runtime_error("Multiple 'Camera' objects in scene.");
 			camera = c;
 		}
-		  //camera->transform->x = ;
 	}
 	if (!camera) throw std::runtime_error("No 'Camera' camera in scene.");
 
@@ -356,13 +344,13 @@ bool GameMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 				if (evt.key.keysym.scancode == SDL_SCANCODE_L) {
 						std::cout << "GENERATED VECTOR: " << std::endl;
 						for(int i=0; i<generated_vector.size(); ++i){
-							std::cout << generated_vector[i] << ' ';
+							std::cout << cube[generated_vector[i]] << ' ';
 						}
 						std::cout << " " << std::endl;
 
 						std::cout << "USER VECTOR: " << std::endl;
 						for(int i=0; i<user_vector.size(); ++i){
-							std::cout << user_vector[i] << ' ';
+							std::cout << cube[user_vector[i]] << ' ';
 						}
 						std::cout << " " << std::endl;
 

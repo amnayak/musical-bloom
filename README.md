@@ -1,11 +1,11 @@
 # Game Information
 (Note: fill in this portion with information about your game.)
 
-Title: (TODO: your game's title)
+Title: Musical Bloom
 
-Author: (TODO: your name)
+Author: Amukta Nayak
 
-Design Document: [TODO: name of design document](TODO: link to design document)
+Design Document: [Musical Bloom](http://graphics.cs.cmu.edu/courses/15-466-f18/game3-designs/ishmaelj/)
 
 Screen Shot:
 
@@ -13,15 +13,34 @@ Screen Shot:
 
 How To Play:
 
-TODO: describe the controls and (if needed) goals/strategy.
+Just as the doc says, copy the pattern that the cubes follow.
+
+W -- Red
+D -- Blue
+S -- Green
+A -- Yellow
+
+LRUD works as well
 
 Changes From The Design Document:
-
-TODO: what did you need to add/remove/modify from the original design? Why?
+Followed design doc.
 
 Good / Bad / Ugly Code:
 
-TODO: provide examples of code you wrote from this project that you think is good (elegant, simple, useful), bad (hack-y, brittle, unreadable), and ugly (particularly inelegant). Provide a sentence or two of justification for the examples.
+The bloom shader is very shady (not shader-shady but actually just janky), only because I ran out of time.
+I didn't get how to illuminate certain objects by itself so I moved the spotlight to change the
+illumination of each of the cubes.
+
+I also didn't understand how to control the timing of the code-- any waits, sleeps, would cause lag since it would delay graphics and sound.
+All the sounds would play at once in a previous version. I even tried playing a blank sound, to space the sounds out.
+The illuminated object would appear and disappear very quickly.
+
+The game logic works perfectly. To prove it, I left in a debug feature. Press "L" at any point
+to print out your current inputs and the generated inputs you're trying to match.
+
+If I had more time, I'd try to make a better bloom shader.
+
+All sounds from: http://soundbible.com/tags-chime.html
 
 # Changes In This Base Code
 
