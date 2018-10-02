@@ -43,6 +43,8 @@ bool gameOver = false;
 //dist_x(eng); to generate something
 typedef std::chrono::high_resolution_clock Time;
 typedef std::chrono::duration<float> fsec;
+float spot_spin = 0.0f;
+bool key;
 
 
 //LOAD SOUNDS
@@ -63,6 +65,9 @@ Load< Sound::Sample > sample_failure(LoadTagDefault, [](){
 });
 Load< Sound::Sample > sample_success(LoadTagDefault, [](){
 	return new Sound::Sample(data_path("sound/Correct.wav"));
+});
+Load< Sound::Sample > sample_silent(LoadTagDefault, [](){
+	return new Sound::Sample(data_path("sound/Silent.wav"));
 });
 
 
@@ -93,8 +98,8 @@ Load< GLuint > blur_program(LoadTagDefault, [](){
 		"#version 330\n"
 		"void main() {\n"
 		"	gl_Position = vec4(4 * (gl_VertexID & 1) - 1,  2 * (gl_VertexID & 2) - 1, 0.0, 1.0);\n"
-		"}\n"
-		,
+		"}\n",
+
 		//NOTE on reading screen texture:
 		//texelFetch() gives direct pixel access with integer coordinates, but accessing out-of-bounds pixel is undefined:
 		//	vec4 color = texelFetch(tex, ivec2(gl_FragCoord.xy), 0);
@@ -114,13 +119,27 @@ Load< GLuint > blur_program(LoadTagDefault, [](){
 		"		fract(dot(gl_FragCoord.xy ,vec2(12.9898,78.233))),\n"
 		"		fract(dot(gl_FragCoord.xy ,vec2(96.3869,-27.5796)))\n"
 		"	));\n"
+
+		//in blur_shader:
+		"vec4 center = texture(tex, gl_FragCoord.xy / textureSize(tex, 0));\n"
+		//neighbors get added if they are bright:
+		"vec4 blur = center;\n"
+		"vec4 n1 = texture(tex, (gl_FragCoord.xy + vec2(ofs.x,ofs.y)) / textureSize(tex, 0));\n"
+		"vec4 n2 = texture(tex, (gl_FragCoord.xy + vec2(-ofs.y,ofs.x)) / textureSize(tex, 0));\n"
+		"vec4 n3 = texture(tex, (gl_FragCoord.xy + vec2(-ofs.x,-ofs.y)) / textureSize(tex, 0));\n"
+		"vec4 n4 = texture(tex, (gl_FragCoord.xy + vec2(ofs.y,-ofs.x)) / textureSize(tex, 0));\n"
+		"blur += 0.1 * (n1+n2+n3+n4);\n"
+			/* do the other three neighbors */
+
 		//do a four-pixel average to blur:
+		/**
 		"	vec4 blur =\n"
 		"		+ 0.25 * texture(tex, (gl_FragCoord.xy + vec2(ofs.x,ofs.y)) / textureSize(tex, 0))\n"
 		"		+ 0.25 * texture(tex, (gl_FragCoord.xy + vec2(-ofs.y,ofs.x)) / textureSize(tex, 0))\n"
 		"		+ 0.25 * texture(tex, (gl_FragCoord.xy + vec2(-ofs.x,-ofs.y)) / textureSize(tex, 0))\n"
 		"		+ 0.25 * texture(tex, (gl_FragCoord.xy + vec2(ofs.y,-ofs.x)) / textureSize(tex, 0))\n"
 		"	;\n"
+		**/
 		"	fragColor = vec4(blur.rgb, 1.0);\n" //blur;\n"
 		"}\n"
 	);
@@ -272,46 +291,68 @@ void set_bloom (uint32_t selectedCube) {
 		is_bloom[i] = false;
 	}
 	//set selectedCube to true
-	is_bloom[selectedCube] = true;
+	if (selectedCube != -1) {
+		is_bloom[selectedCube] = true;
+	}
 }
 
-void rest(uint32_t delay) {
-	std::cout << "began sleep"<< std::endl;
-	std::this_thread::sleep_for(std::chrono::milliseconds(delay));
-	std::cout << "end sleep"<< std::endl;
+void rest() {
+	loop = sample_success->play(glm::vec3(0.0f, 0.0f, 0.0f), 1.0f, Sound::Once);
+	loop = sample_success->play(glm::vec3(0.0f, 0.0f, 0.0f), 1.0f, Sound::Once);
+	loop = sample_success->play(glm::vec3(0.0f, 0.0f, 0.0f), 1.0f, Sound::Once);
+	loop = sample_success->play(glm::vec3(0.0f, 0.0f, 0.0f), 1.0f, Sound::Once);
+}
+
+void wait_key() {
+	while (!key){
+	}
 }
 
 void play_chime(std::string chimeType) {
 	if (chimeType == "RedCube") {
 		loop = sample_red->play(glm::vec3(0.0f, 0.0f, 0.0f), 1.0f, Sound::Once);
-		rest(3000);
 	} else if (chimeType == "BlueCube") {
 		loop = sample_blue->play(glm::vec3(0.0f, 0.0f, 0.0f), 1.0f, Sound::Once);
-		rest(3000);
 	} else if (chimeType == "GreenCube") {
 		loop = sample_green->play(glm::vec3(0.0f, 0.0f, 0.0f), 1.0f, Sound::Once);
-		rest(3000);
 	} else if (chimeType == "YellowCube") {
 		loop = sample_yellow->play(glm::vec3(0.0f, 0.0f, 0.0f), 1.0f, Sound::Once);
-		rest(3000);
 	} else if (chimeType == "FAILURE") {
 		loop = sample_failure->play(glm::vec3(0.0f, 0.0f, 0.0f), 0.2f, Sound::Once);
-		//rest(500);
 	} else if (chimeType == "SUCCESS") {
 		loop = sample_success->play(glm::vec3(0.0f, 0.0f, 0.0f), 0.2f, Sound::Once);
-		//rest(500);
 	} else {
 		std::cout << "invalid chime @ play_chime: " << chimeType << std::endl;
+	}
+	key = false;
+	wait_key();
+}
+
+void shift_spotlight() {
+	if (is_bloom[0]) {
+		spot_parent_transform->rotation = glm::angleAxis(spot_spin, glm::vec3(0.0f, -1.0f, 0.0f));
+	} else if (is_bloom[1]) {
+		spot_parent_transform->rotation = glm::angleAxis(spot_spin, glm::vec3(-1.0f, 0.0f, 0.0f));
+	} else if (is_bloom[2]) {
+		spot_parent_transform->rotation = glm::angleAxis(spot_spin, glm::vec3(0.0f, 1.0f, 0.0f));
+	} else if (is_bloom[3]) {
+		spot_parent_transform->rotation = glm::angleAxis(spot_spin, glm::vec3(1.0f, 0.0f, 0.0f));
 	}
 }
 
 bool GameMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size) {
-	//TODO: for each input, play the right chime
+	spot_spin = 5.0f * 300 / float(window_size.x);
+
+	if (evt.type == SDL_KEYDOWN && evt.key.keysym.scancode == SDL_SCANCODE_K ) {
+		key = true;
+	}
+
+	//for each input, play the right chime
 	if (user_input == true && user_vector.size() < generated_vector.size()) {
  		//keep listening, add to user_input
 			if (evt.type == SDL_KEYDOWN) {
 
-				//TODO FOR DEBUGGING ONLY, PLS REMOVE
+				// FOR DEBUGGING ONLY, PLS DON'T CHEAT
 				if (evt.key.keysym.scancode == SDL_SCANCODE_L) {
 						std::cout << "GENERATED VECTOR: " << std::endl;
 						for(int i=0; i<generated_vector.size(); ++i){
@@ -363,13 +404,14 @@ void play_chimes() {
 	//play each chime in the generated_vector
 	for(uint32_t i : generated_vector) {
 		assert (i >= 0 && i <= 3);
+		wait_key();
 		play_chime(cube[i]);
 		set_bloom(i);
+		//rest();
 	}
 }
 void GameMode::update(float elapsed) {
-	//camera_parent_transform->rotation = glm::angleAxis(camera_spin, glm::vec3(0.0f, 0.0f, 1.0f));
-	//spot_parent_transform->rotation = glm::angleAxis(spot_spin, glm::vec3(0.0f, 0.0f, 1.0f));
+	shift_spotlight(); //shift spotlight based on what's currently on
 
 	//check win/loss conditions
 	if (gameOver) {
@@ -396,11 +438,13 @@ void GameMode::update(float elapsed) {
 		user_vector.clear(); //clear for new input
 		generated_vector.push_back(dist_x(eng)); //push random cube
 		play_chimes();
+		//rest();
 		user_input = true;
 	} else if (user_input == true) {
 		//handle_event's job to fill user_vector
 		if (user_vector.size() >= generated_vector.size()) {
 			//stop listening to user_input
+			//rest();
 			user_input = false;
 		}
 	}

@@ -29,5 +29,4 @@ struct GameMode : public Mode {
 	virtual void draw(glm::uvec2 const &drawable_size) override;
 
 	float camera_spin = 0.0f;
-	float spot_spin = 0.0f;
 };
