@@ -12,7 +12,7 @@ Screen Shot:
 
 How To Play:
 
-Just as the doc says, copy the pattern that the cubes follow.
+Copy the cubes' pattern for as long as you can.
 
 * W -- Red
 * D -- Blue
